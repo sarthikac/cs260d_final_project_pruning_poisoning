@@ -69,10 +69,13 @@ def iterative_magnitude_prune_and_retrain(model_fn, train_dataset, test_loader,
         scheduler = optim.lr_scheduler.StepLR(opt, step_size=epochs_per_cycle//2, gamma=0.1)
 
         # Retrain with mask enforcement
+        # Create DataLoader once outside epoch loop for efficiency
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+
         for e in range(epochs_per_cycle):
             model.train()
 
-            for inputs, targets in DataLoader(train_dataset, batch_size=batch_size, shuffle=True):
+            for inputs, targets in train_loader:
                 inputs, targets = inputs.to(device), targets.to(device)
                 
                 opt.zero_grad()
@@ -86,7 +89,7 @@ def iterative_magnitude_prune_and_retrain(model_fn, train_dataset, test_loader,
 
                 opt.step()
                 
-                apply_mask(model, mask)
+            apply_mask(model, mask)
             scheduler.step()
 
     return model, mask

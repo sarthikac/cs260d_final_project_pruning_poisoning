@@ -42,7 +42,7 @@ def plot_loss_curves(results, title='Loss Curves'):
 
     fig.suptitle(title, fontsize=14, y=1.02)
     plt.tight_layout()
-    return fig
+    plt.show()
 
 def plot_results(results, title='Results'):
     methods = list(results.keys())
