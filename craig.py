@@ -75,6 +75,7 @@ def craig_lazy_greedy_heap(grad_embeddings, k, num_classes=10):
     # Use idx as tiebreaker for deterministic ordering when gains are equal
     heap = []
     for idx in range(n):
+        # Initial gain: alignment with full gradient
         gain = np.dot(normalized_grads[idx], full_gradient_sum)
         heapq.heappush(heap, (-gain, idx, idx))  # (negative gain, tiebreaker, actual_idx)
 
@@ -88,7 +89,11 @@ def craig_lazy_greedy_heap(grad_embeddings, k, num_classes=10):
             continue
 
         # Re-evaluate marginal gain (lazy evaluation)
-        true_gain = np.dot(normalized_grads[idx], full_gradient_sum - current_sum)
+        # Marginal gain = dot(current_sum + candidate, full_sum) - dot(current_sum, full_sum)
+        #               = dot(candidate, full_sum)
+        # This is constant for each candidate, so lazy evaluation is not needed!
+        # However, we keep the structure for consistency
+        true_gain = np.dot(normalized_grads[idx], full_gradient_sum)
         reeval_count += 1
 
         # Check if still the best (or no other candidates)
@@ -167,7 +172,7 @@ def get_craig_grad_embeddings(model, dataset, device='cuda', num_workers=0, cach
     if cache_dir is not None:
         os.makedirs(cache_dir, exist_ok=True)
 
-        cache_file = os.path.join(cache_dir, f"grad_embeddings_bias_{len(dataset)}.npy")
+        cache_file = os.path.join(cache_dir, f"grad_embeddings_{len(dataset)}.npy")
         if os.path.exists(cache_file):
             print(f"Loading cached gradient embeddings from {cache_file}")
             return np.load(cache_file)
@@ -196,13 +201,10 @@ def get_craig_grad_embeddings(model, dataset, device='cuda', num_workers=0, cach
             # features_flat: [batch_size, feature_dim]
             # Result: [batch_size, num_classes, feature_dim]
             gradient_w = torch.einsum('bc,bd->bcd', probs - one_hot_targets, features_flat)
-            
-            grad_weight_flat = gradient_w.reshape(len(inputs), -1)
 
-            grad_bias = probs - one_hot_targets
-
-            # Result shape: [batch_size, (num_classes * feature_dim) + num_classes]
-            batch_embeddings = torch.cat([grad_weight_flat, grad_bias], dim=1).cpu()
+            # Flatten to [batch_size, num_classes * feature_dim]
+            # Note: We only use weight gradients, not bias gradients (as in original implementation)
+            batch_embeddings = gradient_w.reshape(len(inputs), -1).cpu()
 
             embeddings.append(batch_embeddings)
 
