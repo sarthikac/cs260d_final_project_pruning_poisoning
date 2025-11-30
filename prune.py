@@ -43,14 +43,14 @@ def iterative_magnitude_prune_and_retrain(model_fn, train_dataset, test_loader,
                                         batch_size=256,
                                         num_workers = 0,
                                         device='cuda'):
-    model = model_fn(device)
+    model = model_fn(device=device)
     opt = optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
     crit = nn.CrossEntropyLoss()
 
     # 1. Train to rewind point
     print(f"Training to rewind epoch {rewind_epoch}...")
     for e in range(rewind_epoch):
-        train_one_epoch(model, DataLoader(train_dataset, batch_size=batch_size, shuffle=True), opt, crit, num_workers=num_workers, device=device)
+        train_one_epoch(model, DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers), opt, crit, device=device)
 
     rewind_state = copy.deepcopy(model.state_dict())
     mask = None

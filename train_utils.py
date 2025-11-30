@@ -11,10 +11,12 @@ def train_one_epoch(model, loader, optimizer, criterion, desc='', device='cuda')
         outputs = model(inputs)
         loss = criterion(outputs, targets)
         loss.backward(); optimizer.step()
-        running_loss += loss.item() * inputs.size(0)
+        # Keep on GPU - accumulate without .item()
+        running_loss += loss.detach() * inputs.size(0)
         _, predicted = outputs.max(1)
-        total += targets.size(0); correct += predicted.eq(targets).sum().item()
-    return running_loss/total, correct/total
+        total += targets.size(0); correct += predicted.eq(targets).sum()
+    # Single GPU->CPU transfer at the end
+    return running_loss.item()/total, correct.item()/total
 
 def evaluate(model, loader, device='cuda'):
     model.eval()
@@ -25,10 +27,12 @@ def evaluate(model, loader, device='cuda'):
             inputs = inputs.to(device); targets = targets.to(device)
             outputs = model(inputs)
             loss = criterion(outputs, targets)
-            losses += loss.item()
+            # Keep on GPU - accumulate without .item()
+            losses += loss.detach()
             _, predicted = outputs.max(1)
-            total += targets.size(0); correct += predicted.eq(targets).sum().item()
-    return losses/total, correct/total
+            total += targets.size(0); correct += predicted.eq(targets).sum()
+    # Single GPU->CPU transfer at the end
+    return losses.item()/total, correct.item()/total
 
 def predict_logits(model, loader, device='cuda'):
     model.eval()

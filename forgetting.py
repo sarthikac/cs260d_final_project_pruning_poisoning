@@ -10,7 +10,7 @@ def compute_forgetting_scores(model_fn, dataset, epochs=5, device='cuda', num_wo
     Compute forgetting scores as in Toneva et al. 2018
     Fully vectorized on GPU.
     """
-    model = model_fn(device)
+    model = model_fn(device=device)
     optimizer = optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
     

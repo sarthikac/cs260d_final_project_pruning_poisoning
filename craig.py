@@ -227,7 +227,7 @@ def select_subset_craig(model_fn, full_dataset, subset_size, device='cuda', num_
     Returns:
         selected: list of selected indices
     """
-    model = model_fn(device)
+    model = model_fn(device=device)
     print('Computing CRAIG gradient embeddings...')
     grad_emb = get_craig_grad_embeddings(model, full_dataset, device, num_workers, cache_dir)
 
