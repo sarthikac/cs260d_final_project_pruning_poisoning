@@ -1,7 +1,7 @@
 import torch.optim as optim
 import torch.nn as nn
 from torch.utils.data import DataLoader
-import numpy as np
+import torch
 import copy
 from train_utils import train_one_epoch
 
@@ -15,17 +15,19 @@ def get_prunable_layers(model):
     return valid_layers
 
 def prune_by_percentile(model, amount, device='cuda'):
-    """Layer-wise pruning to ensure connectivity and ignore BN/Biases."""
     mask = {}
     valid_layers = get_prunable_layers(model)
 
     for name, m in valid_layers:
-        # Calculate threshold for THIS layer only
-        weights = m.weight.data.abs().cpu().numpy()
-        threshold = np.quantile(weights, amount)
+        weights = m.weight.data.abs().view(-1)        
+        surviving_weights = weights[weights > 1e-9] 
+        
+        if len(surviving_weights) == 0:
+            threshold = 0 
+        else:
+            threshold = torch.quantile(surviving_weights, amount)
 
-        # Create mask for weight only (ignore bias)
-        mask[name + '.weight'] = (m.weight.data.abs() > threshold).float().to(device)
+        mask[name + '.weight'] = (m.weight.data.abs() > threshold).float()
 
     return mask
 
@@ -39,15 +41,16 @@ def iterative_magnitude_prune_and_retrain(model_fn, train_dataset, test_loader,
                                         fraction_to_prune=0.2, iterations=2,
                                         rewind_epoch=1, epochs_per_cycle=3,
                                         batch_size=256,
+                                        num_workers = 0,
                                         device='cuda'):
-    model = model_fn().to(device)
+    model = model_fn(device)
     opt = optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
     crit = nn.CrossEntropyLoss()
 
     # 1. Train to rewind point
     print(f"Training to rewind epoch {rewind_epoch}...")
     for e in range(rewind_epoch):
-        train_one_epoch(model, DataLoader(train_dataset, batch_size=batch_size, shuffle=True), opt, crit, device=device)
+        train_one_epoch(model, DataLoader(train_dataset, batch_size=batch_size, shuffle=True), opt, crit, num_workers=num_workers, device=device)
 
     rewind_state = copy.deepcopy(model.state_dict())
     mask = None
@@ -71,14 +74,19 @@ def iterative_magnitude_prune_and_retrain(model_fn, train_dataset, test_loader,
 
             for inputs, targets in DataLoader(train_dataset, batch_size=batch_size, shuffle=True):
                 inputs, targets = inputs.to(device), targets.to(device)
+                
                 opt.zero_grad()
                 outputs = model(inputs)
                 loss = crit(outputs, targets)
                 loss.backward()
+
+                for name, p in model.named_parameters():
+                    if name in mask:
+                        p.grad.mul_(mask[name])
+
                 opt.step()
-
+                
                 apply_mask(model, mask)
-
             scheduler.step()
 
     return model, mask

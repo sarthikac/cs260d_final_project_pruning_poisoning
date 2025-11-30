@@ -39,3 +39,38 @@ def predict_logits(model, loader, device='cuda'):
             logits = model(inputs)
             logits_list.append(logits.cpu()); targets_list.append(targets)
     return torch.cat(logits_list), torch.cat(targets_list)
+
+def train_with_history(model, train_loader, test_loader, optimizer, scheduler,
+                       criterion, epochs, device='cuda'):
+    """
+    Train model and track per-epoch loss/accuracy history.
+
+    Returns:
+        model: trained model
+        history: dict with keys 'train_losses', 'train_accs', 'test_losses', 'test_accs'
+    """
+    history = {
+        'train_losses': [],
+        'train_accs': [],
+        'test_losses': [],
+        'test_accs': []
+    }
+
+    for e in range(epochs):
+        # Training
+        train_loss, train_acc = train_one_epoch(
+            model, train_loader, optimizer, criterion,
+            desc=f'Epoch {e+1}/{epochs}', device=device
+        )
+        history['train_losses'].append(train_loss)
+        history['train_accs'].append(train_acc)
+
+        # Evaluation
+        test_loss, test_acc = evaluate(model, test_loader, device=device)
+        history['test_losses'].append(test_loss)
+        history['test_accs'].append(test_acc)
+
+        # Step scheduler
+        scheduler.step()
+
+    return model, history
