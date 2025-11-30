@@ -8,7 +8,7 @@ def subset_from_indices(dataset, indices):
 def sample_random_indices(dataset, k, seed=0):
     random.seed(seed); idxs = list(range(len(dataset))); return random.sample(idxs, k)
 
-def compute_poison_retention(poisoned_idx_set, subset_indices, device='cuda'):
+def compute_poison_retention(poisoned_idx_set, subset_indices):
     kept = sum([1 for i in subset_indices if i in poisoned_idx_set])
     return kept, len(poisoned_idx_set), kept / max(1, len(poisoned_idx_set))
 

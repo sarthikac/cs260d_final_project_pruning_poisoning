@@ -3,7 +3,7 @@ import torch.optim as optim
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
-import tqdm
+from tqdm import tqdm
 import numpy as np
 
 def compute_el2n_scores(model_fn, dataset, epochs=5, device='cuda', num_workers = 0):

@@ -43,13 +43,13 @@ def craig_greedy_gradient_matching(grad_embeddings, k, num_classes=10):
     
     return selected
 
-def get_craig_grad_embeddings(model, dataset, device=device):
+def get_craig_grad_embeddings(model, dataset, device='cuda', num_workers=0):
     """
     Compute gradient embeddings for CRAIG as in official implementation
     """
     model.eval()
     embeddings = []
-    
+
     loader = DataLoader(dataset, batch_size=256, shuffle=False, num_workers=num_workers)
     
     with torch.no_grad():
@@ -77,13 +77,13 @@ def get_craig_grad_embeddings(model, dataset, device=device):
     
     return torch.stack(embeddings).numpy()
 
-def select_subset_craig(model_fn, full_dataset, subset_size, device='device'):
+def select_subset_craig(model_fn, full_dataset, subset_size, device='cuda', num_workers=0):
     """
     CRAIG selection using official gradient matching approach
     """
     model = model_fn().to(device)
     print('Computing CRAIG gradient embeddings...')
-    grad_emb = get_craig_grad_embeddings(model, full_dataset, device)
+    grad_emb = get_craig_grad_embeddings(model, full_dataset, device, num_workers)
     print('Running CRAIG greedy selection...')
     selected = craig_greedy_gradient_matching(grad_emb, subset_size)
     print(f'CRAIG selected {len(selected)} items.')

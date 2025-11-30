@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-import tqdm
+from tqdm import tqdm
 
 def train_one_epoch(model, loader, optimizer, criterion, desc='', device='cuda'):
     model.train()

@@ -35,7 +35,7 @@ def apply_mask(model, mask):
         if name in mask:
             p.data.mul_(mask[name])
 
-def iterative_magnitude_prune_and_retrain(model_fn, train_dataset,
+def iterative_magnitude_prune_and_retrain(model_fn, train_dataset, test_loader,
                                         fraction_to_prune=0.2, iterations=2,
                                         rewind_epoch=1, epochs_per_cycle=3,
                                         batch_size=256,
@@ -47,7 +47,7 @@ def iterative_magnitude_prune_and_retrain(model_fn, train_dataset,
     # 1. Train to rewind point
     print(f"Training to rewind epoch {rewind_epoch}...")
     for e in range(rewind_epoch):
-        train_one_epoch(model, DataLoader(train_dataset, batch_size=batch_size, shuffle=True), opt, crit)
+        train_one_epoch(model, DataLoader(train_dataset, batch_size=batch_size, shuffle=True), opt, crit, device=device)
 
     rewind_state = copy.deepcopy(model.state_dict())
     mask = None
@@ -55,7 +55,7 @@ def iterative_magnitude_prune_and_retrain(model_fn, train_dataset,
     for it in range(iterations):
         print(f"Pruning iteration {it+1}/{iterations}...")
 
-        mask = prune_by_percentile(model, fraction_to_prune)
+        mask = prune_by_percentile(model, fraction_to_prune, device=device)
 
         # Rewind weights, re-initialize training optimizer and scheduler for
         # re-training.
