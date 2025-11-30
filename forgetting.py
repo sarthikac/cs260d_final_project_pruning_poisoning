@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 import numpy as np
 
-def compute_forgetting_scores(model_fn, dataset, epochs=5, device='cuda', num_workers=0):
+def compute_forgetting_scores(model_fn, dataset, epochs=5, device='cuda', num_workers=0, seed=0):
     """
     Compute forgetting scores as in Toneva et al. 2018
     Fully vectorized on GPU.
@@ -13,15 +13,28 @@ def compute_forgetting_scores(model_fn, dataset, epochs=5, device='cuda', num_wo
     model = model_fn(device=device)
     optimizer = optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
-    
+
     n_examples = len(dataset)
-    
+
     correctness_history = torch.zeros((n_examples, epochs), dtype=torch.bool, device=device)
-    
-    fixed_loader = DataLoader(dataset, batch_size=256, shuffle=False, num_workers=num_workers)
-    
+
+    # Worker init function for deterministic data loading
+    def worker_init_fn(worker_id):
+        worker_seed = torch.initial_seed() % 2**32
+        np.random.seed(worker_seed)
+        import random
+        random.seed(worker_seed)
+
+    fixed_loader = DataLoader(dataset, batch_size=256, shuffle=False, num_workers=num_workers,
+                              worker_init_fn=worker_init_fn)
+
     for epoch in range(epochs):
-        train_loader = DataLoader(dataset, batch_size=128, shuffle=True, num_workers=num_workers)
+        # Create generator for deterministic shuffling
+        g = torch.Generator()
+        g.manual_seed(seed + epoch)  # Different seed per epoch but deterministic
+
+        train_loader = DataLoader(dataset, batch_size=128, shuffle=True, num_workers=num_workers,
+                                  generator=g, worker_init_fn=worker_init_fn)
         model.train()
         for inputs, targets in tqdm(train_loader, desc=f'Forget Train {epoch+1}', leave=False):
             inputs, targets = inputs.to(device), targets.to(device)

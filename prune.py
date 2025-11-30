@@ -41,16 +41,28 @@ def iterative_magnitude_prune_and_retrain(model_fn, train_dataset, test_loader,
                                         fraction_to_prune=0.2, iterations=2,
                                         rewind_epoch=1, epochs_per_cycle=3,
                                         batch_size=256,
-                                        num_workers = 0,
-                                        device='cuda'):
+                                        num_workers=0,
+                                        device='cuda', seed=0):
     model = model_fn(device=device)
     opt = optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
     crit = nn.CrossEntropyLoss()
 
+    # Worker init function for deterministic data loading
+    def worker_init_fn(worker_id):
+        worker_seed = torch.initial_seed() % 2**32
+        import numpy as np
+        np.random.seed(worker_seed)
+        import random
+        random.seed(worker_seed)
+
     # 1. Train to rewind point
     print(f"Training to rewind epoch {rewind_epoch}...")
+    g = torch.Generator()
+    g.manual_seed(seed)
     for e in range(rewind_epoch):
-        train_one_epoch(model, DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers), opt, crit, device=device)
+        rewind_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
+                                   num_workers=num_workers, generator=g, worker_init_fn=worker_init_fn)
+        train_one_epoch(model, rewind_loader, opt, crit, device=device)
 
     rewind_state = copy.deepcopy(model.state_dict())
     mask = None
@@ -69,8 +81,11 @@ def iterative_magnitude_prune_and_retrain(model_fn, train_dataset, test_loader,
         scheduler = optim.lr_scheduler.StepLR(opt, step_size=epochs_per_cycle//2, gamma=0.1)
 
         # Retrain with mask enforcement
-        # Create DataLoader once outside epoch loop for efficiency
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+        # Create DataLoader once outside epoch loop for efficiency with deterministic shuffling
+        g_retrain = torch.Generator()
+        g_retrain.manual_seed(seed + it + 1000)  # Different seed per iteration but deterministic
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
+                                  num_workers=num_workers, generator=g_retrain, worker_init_fn=worker_init_fn)
 
         for e in range(epochs_per_cycle):
             model.train()

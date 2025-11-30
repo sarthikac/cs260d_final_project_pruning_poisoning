@@ -72,16 +72,17 @@ def craig_lazy_greedy_heap(grad_embeddings, k, num_classes=10):
 
     # Initialize max heap with all candidates
     # Python heapq is min-heap, so negate gains for max-heap behavior
+    # Use idx as tiebreaker for deterministic ordering when gains are equal
     heap = []
     for idx in range(n):
         gain = np.dot(normalized_grads[idx], full_gradient_sum)
-        heapq.heappush(heap, (-gain, idx))  # Negative for max-heap
+        heapq.heappush(heap, (-gain, idx, idx))  # (negative gain, tiebreaker, actual_idx)
 
     # Greedy selection with lazy evaluation
     reeval_count = 0
     while len(selected) < k and heap:
         # Pop candidate with highest upper bound
-        neg_gain, idx = heapq.heappop(heap)
+        neg_gain, _, idx = heapq.heappop(heap)  # Unpack with tiebreaker
 
         if idx in selected:
             continue
@@ -96,8 +97,8 @@ def craig_lazy_greedy_heap(grad_embeddings, k, num_classes=10):
             selected.append(idx)
             current_sum += normalized_grads[idx]
         else:
-            # Re-insert with updated gain
-            heapq.heappush(heap, (-true_gain, idx))
+            # Re-insert with updated gain and tiebreaker
+            heapq.heappush(heap, (-true_gain, idx, idx))
 
     return selected
 
@@ -127,7 +128,8 @@ def craig_greedy_gradient_matching(grad_embeddings, k, num_classes=10):
             break
 
         # OPTIMIZED: Vectorized gain computation for all remaining candidates
-        remaining_arr = np.array(list(remaining))
+        # Sort for deterministic ordering when gains are equal
+        remaining_arr = np.array(sorted(remaining))
         candidate_grads = normalized_grads[remaining_arr]  # [M, D] where M = len(remaining)
 
         # Vectorized dot products: [M, D] @ [D] -> [M]
@@ -164,7 +166,8 @@ def get_craig_grad_embeddings(model, dataset, device='cuda', num_workers=0, cach
     # Check cache if provided
     if cache_dir is not None:
         os.makedirs(cache_dir, exist_ok=True)
-        cache_file = os.path.join(cache_dir, f"grad_embeddings_{len(dataset)}.npy")
+
+        cache_file = os.path.join(cache_dir, f"grad_embeddings_bias_{len(dataset)}.npy")
         if os.path.exists(cache_file):
             print(f"Loading cached gradient embeddings from {cache_file}")
             return np.load(cache_file)
@@ -193,8 +196,13 @@ def get_craig_grad_embeddings(model, dataset, device='cuda', num_workers=0, cach
             # features_flat: [batch_size, feature_dim]
             # Result: [batch_size, num_classes, feature_dim]
             gradient_w = torch.einsum('bc,bd->bcd', probs - one_hot_targets, features_flat)
-            # Flatten to [batch_size, num_classes * feature_dim]
-            batch_embeddings = gradient_w.reshape(len(inputs), -1).cpu()
+            
+            grad_weight_flat = gradient_w.reshape(len(inputs), -1)
+
+            grad_bias = probs - one_hot_targets
+
+            # Result shape: [batch_size, (num_classes * feature_dim) + num_classes]
+            batch_embeddings = torch.cat([grad_weight_flat, grad_bias], dim=1).cpu()
 
             embeddings.append(batch_embeddings)
 
