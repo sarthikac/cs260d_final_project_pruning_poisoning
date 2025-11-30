@@ -77,7 +77,7 @@ def get_craig_grad_embeddings(model, dataset, device=device):
     
     return torch.stack(embeddings).numpy()
 
-def select_subset_craig(model_fn, full_dataset, subset_size, batch_size=256):
+def select_subset_craig(model_fn, full_dataset, subset_size, device='device'):
     """
     CRAIG selection using official gradient matching approach
     """
