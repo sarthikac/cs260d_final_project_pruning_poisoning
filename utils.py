@@ -1,6 +1,13 @@
 import torch
 from torch.utils.data import Subset
 import random
+import numpy as np
+
+def init_worker(worker_id):
+    base_seed = torch.initial_seed() 
+    unique_seed = (base_seed + worker_id) % 2**32
+    np.random.seed(unique_seed)
+    random.seed(unique_seed)
 
 def subset_from_indices(dataset, indices):
     return Subset(dataset, indices)

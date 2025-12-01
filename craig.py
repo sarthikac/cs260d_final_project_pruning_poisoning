@@ -5,6 +5,7 @@ import numpy as np
 import heapq
 import os
 import time
+from utils import init_worker
 
 def compute_similarity_gpu(X, metric='euclidean', device='cuda'):
     """
@@ -46,110 +47,74 @@ def compute_similarity_gpu(X, metric='euclidean', device='cuda'):
 
 def craig_lazy_greedy_heap(grad_embeddings, k, num_classes=10):
     """
-    Lazy greedy selection with heap optimization.
-    Uses heap to maintain upper bounds on marginal gains and avoids
-    redundant computations.
-
-    Args:
-        grad_embeddings: [n, d] numpy array of gradient embeddings
-        k: number of samples to select
-        num_classes: number of classes (unused, for API compatibility)
-
-    Returns:
-        selected: list of selected indices
+    Facility Location greedy selection using lazy evaluation.
     """
     n = grad_embeddings.shape[0]
-
-    # Normalize gradients
-    grad_norms = np.linalg.norm(grad_embeddings, axis=1, keepdims=True)
+    
+    # Normalize embeddings
+    grad_norms = np.linalg. norm(grad_embeddings, axis=1, keepdims=True)
     normalized_grads = grad_embeddings / (grad_norms + 1e-8)
-
-    # Compute full gradient sum
-    full_gradient_sum = normalized_grads.sum(axis=0)
-
+    
+    S = np.dot(normalized_grads, normalized_grads.T)  # [n, n]
+    
     selected = []
-    current_sum = np.zeros_like(full_gradient_sum)
-
-    # Initialize max heap with all candidates
-    # Python heapq is min-heap, so negate gains for max-heap behavior
-    # Use idx as tiebreaker for deterministic ordering when gains are equal
+    current_max = np.zeros(n)  # Max similarity to any selected point
+    
     heap = []
     for idx in range(n):
-        # Initial gain: alignment with full gradient
-        gain = np.dot(normalized_grads[idx], full_gradient_sum)
-        heapq.heappush(heap, (-gain, idx, idx))  # (negative gain, tiebreaker, actual_idx)
-
-    # Greedy selection with lazy evaluation
-    reeval_count = 0
+        # Initial gain: sum of similarities to all points
+        gain = S[idx, :].sum()
+        heapq.heappush(heap, (-gain, idx, idx))
+    
     while len(selected) < k and heap:
-        # Pop candidate with highest upper bound
-        neg_gain, _, idx = heapq.heappop(heap)  # Unpack with tiebreaker
-
+        neg_gain, _, idx = heapq.heappop(heap)
+        
         if idx in selected:
             continue
-
-        # Re-evaluate marginal gain (lazy evaluation)
-        # Marginal gain = dot(current_sum + candidate, full_sum) - dot(current_sum, full_sum)
-        #               = dot(candidate, full_sum)
-        # This is constant for each candidate, so lazy evaluation is not needed!
-        # However, we keep the structure for consistency
-        true_gain = np.dot(normalized_grads[idx], full_gradient_sum)
-        reeval_count += 1
-
-        # Check if still the best (or no other candidates)
-        if not heap or -neg_gain <= true_gain + 1e-9:  # Small tolerance for numerical errors
-            # Add to selection
+        
+        # RE-EVALUATE: facility location gain
+        new_max = np.maximum(current_max, S[:, idx])
+        true_gain = np.sum(new_max) - np.sum(current_max)
+        
+        if not heap or -neg_gain <= true_gain + 1e-9:
             selected.append(idx)
-            current_sum += normalized_grads[idx]
+            current_max = new_max
         else:
-            # Re-insert with updated gain and tiebreaker
             heapq.heappush(heap, (-true_gain, idx, idx))
-
+    
     return selected
 
 
-def craig_greedy_gradient_matching(grad_embeddings, k, num_classes=10):
-    """
-    CRAIG greedy selection via gradient matching as in official implementation
-    """
+def craig_greedy_gradient_matching(grad_embeddings, k):
+    """Fixed: facility location instead of gradient matching"""
     n = grad_embeddings.shape[0]
+    
+    # Normalize and compute similarity matrix
+    grad_norms = np.linalg. norm(grad_embeddings, axis=1, keepdims=True)
+    normalized_grads = grad_embeddings / (grad_norms + 1e-8)
+    S = np.dot(normalized_grads, normalized_grads.T)  # [n, n]
+    
     selected = []
+    current_max = np.zeros(n)
     remaining = set(range(n))
     
-    # Normalize gradients
-    grad_norms = np.linalg.norm(grad_embeddings, axis=1, keepdims=True)
-    normalized_grads = grad_embeddings / (grad_norms + 1e-8)
-    
-    # Compute full gradient sum (approximation)
-    full_gradient_sum = normalized_grads.sum(axis=0)
-    
-    current_sum = np.zeros_like(full_gradient_sum)
-    
-    # Precompute current score once
-    current_score = np.dot(current_sum, full_gradient_sum)
-
     for _ in range(k):
-        if not remaining:
-            break
-
-        # OPTIMIZED: Vectorized gain computation for all remaining candidates
-        # Sort for deterministic ordering when gains are equal
-        remaining_arr = np.array(sorted(remaining))
-        candidate_grads = normalized_grads[remaining_arr]  # [M, D] where M = len(remaining)
-
-        # Vectorized dot products: [M, D] @ [D] -> [M]
-        candidate_scores = np.dot(candidate_grads, full_gradient_sum)
-        gains = candidate_scores  # Marginal gain is just the dot product with candidate
-
-        # Find best candidate
-        best_local_idx = np.argmax(gains)
-        best_idx = remaining_arr[best_local_idx]
-
-        # Update selection
-        selected.append(best_idx)
-        remaining.remove(best_idx)
-        current_sum += normalized_grads[best_idx]
-        current_score = np.dot(current_sum, full_gradient_sum)
+        best_gain = -np.inf
+        best_idx = -1
+        
+        for idx in remaining:
+            # Facility location gain: how much does idx cover new points?
+            new_max = np.maximum(current_max, S[:, idx])
+            gain = np.sum(new_max) - np.sum(current_max)
+            
+            if gain > best_gain:
+                best_gain = gain
+                best_idx = idx
+        
+        if best_idx != -1:
+            selected.append(best_idx)
+            remaining.remove(best_idx)
+            current_max = np.maximum(current_max, S[:, best_idx])
     
     return selected
 
@@ -180,7 +145,7 @@ def get_craig_grad_embeddings(model, dataset, device='cuda', num_workers=0, cach
     model.eval()
     embeddings = []
 
-    loader = DataLoader(dataset, batch_size=256, shuffle=False, num_workers=num_workers)
+    loader = DataLoader(dataset, batch_size=256, shuffle=False, num_workers=num_workers, worker_init_fn=init_worker)
 
     start_time = time.time()
     with torch.no_grad():

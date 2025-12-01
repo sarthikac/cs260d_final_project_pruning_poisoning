@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import numpy as np
+from utils import init_worker
 
 def compute_forgetting_scores(model_fn, dataset, epochs=5, device='cuda', num_workers=0, seed=0):
     """
@@ -18,15 +19,8 @@ def compute_forgetting_scores(model_fn, dataset, epochs=5, device='cuda', num_wo
 
     correctness_history = torch.zeros((n_examples, epochs), dtype=torch.bool, device=device)
 
-    # Worker init function for deterministic data loading
-    def worker_init_fn(worker_id):
-        worker_seed = torch.initial_seed() % 2**32
-        np.random.seed(worker_seed)
-        import random
-        random.seed(worker_seed)
-
     fixed_loader = DataLoader(dataset, batch_size=256, shuffle=False, num_workers=num_workers,
-                              worker_init_fn=worker_init_fn)
+                              worker_init_fn=init_worker)
 
     for epoch in range(epochs):
         # Create generator for deterministic shuffling
@@ -34,7 +28,7 @@ def compute_forgetting_scores(model_fn, dataset, epochs=5, device='cuda', num_wo
         g.manual_seed(seed + epoch)  # Different seed per epoch but deterministic
 
         train_loader = DataLoader(dataset, batch_size=128, shuffle=True, num_workers=num_workers,
-                                  generator=g, worker_init_fn=worker_init_fn)
+                                  generator=g, worker_init_fn=init_worker)
         model.train()
         for inputs, targets in tqdm(train_loader, desc=f'Forget Train {epoch+1}', leave=False):
             inputs, targets = inputs.to(device), targets.to(device)
@@ -61,11 +55,17 @@ def compute_forgetting_scores(model_fn, dataset, epochs=5, device='cuda', num_wo
                 correctness_history[start_idx:end_idx, epoch] = correct_batch
                 start_idx = end_idx
     
-    # A "forget" is when accuracy goes from 1 (True) -> 0 (False)    
-    prev_acc = correctness_history[:, :-1] 
-    curr_acc = correctness_history[:, 1:]  
+    # A "forget" is when accuracy goes from 1 (True) -> 0 (False)
+    prev_acc = correctness_history[:, :-1]
+    curr_acc = correctness_history[:, 1:]
 
-    forgetting_events = (prev_acc == True) & (curr_acc == False)    
+    forgetting_events = (prev_acc == True) & (curr_acc == False)
     forgetting_scores = forgetting_events.long().sum(dim=1)
-    
+
+    # Handle examples that were never learned (as in official implementation)
+    # If an example was never correct across all epochs, assign it the maximum forgetting count
+    ever_correct = correctness_history.any(dim=1)  # True if correct at least once
+    never_learned = ~ever_correct
+    forgetting_scores[never_learned] = 0
+
     return forgetting_scores.cpu().numpy()
