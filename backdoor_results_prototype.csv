@@ -1,2 +1,2 @@
 method,subset_size,clean_acc,pruned_acc,asr,pruned_asr,poison_kept,poison_total,poison_retention,final_train_loss,final_test_loss,pruned_test_loss
-craig,12500,0.2288,0.2328,0.0,0.0,0,1000,0.0,0.6318784375,9.85636875,9.49212109375
+craig,25000,0.5947,0.5138,0.9988,0.9876,723,1000,0.723,0.004975432739257812,3.343759375,4.666005078125

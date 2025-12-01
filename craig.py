@@ -1,11 +1,14 @@
 import torch
 import torch.nn.functional as F
+import torch.optim as optim
 from torch.utils.data import DataLoader
 import numpy as np
 import heapq
 import os
 import time
+from tqdm import tqdm
 from utils import init_worker
+from GradualWarmupScheduler import GradualWarmupScheduler
 
 def craig_lazy_greedy_heap(grad_embeddings, k, num_classes=10):
     """
@@ -188,7 +191,7 @@ def get_craig_grad_embeddings(model, dataset, device='cuda', num_workers=0, cach
     return result
 
 def select_subset_craig(model_fn, full_dataset, subset_size, device='cuda', num_workers=0,
-                        use_lazy_greedy=True, cache_dir=None):
+                        use_lazy_greedy=True, cache_dir=None, pretrain_epochs=5, warmup_epochs=2, seed=0):
     """
     CRAIG selection using gradient matching (official implementation).
 
@@ -203,12 +206,57 @@ def select_subset_craig(model_fn, full_dataset, subset_size, device='cuda', num_
         use_lazy_greedy: if True, use heap-based lazy greedy (faster, O(k*m*log n));
                         if False, use standard greedy (simpler, O(k*n))
         cache_dir: optional directory to cache gradient embeddings for faster re-runs
+        pretrain_epochs: number of epochs to train before computing gradients (default: 5)
+        warmup_epochs: number of warmup epochs for learning rate (default: 2)
+        seed: random seed for reproducibility (default: 0)
 
     Returns:
         selected: list of selected indices
     """
     model = model_fn(device=device)
-    print('Computing CRAIG gradient embeddings...')
+
+    # Train model for a few epochs before computing gradients (prevents random initialization bias)
+    print(f'Pre-training CRAIG model for {pretrain_epochs} epochs (warmup: {warmup_epochs})...')
+    optimizer = optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
+
+    # Create main scheduler (after warmup)
+    cosine_scheduler = optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=pretrain_epochs-warmup_epochs, eta_min=1e-5
+    )
+
+    # Create warmup scheduler that wraps the cosine scheduler
+    scheduler = GradualWarmupScheduler(
+        optimizer, multiplier=1.0, total_epoch=warmup_epochs, after_scheduler=cosine_scheduler
+    )
+
+    criterion = torch.nn.CrossEntropyLoss()
+
+    # Create training loader with deterministic shuffling
+    g = torch.Generator()
+    g.manual_seed(seed)
+    train_loader = DataLoader(full_dataset, batch_size=128, shuffle=True,
+                             num_workers=num_workers, generator=g, worker_init_fn=init_worker)
+
+    for epoch in range(pretrain_epochs):
+        model.train()
+        epoch_loss = 0.0
+        num_batches = 0
+
+        for inputs, targets in tqdm(train_loader, desc=f'CRAIG Pretrain Epoch {epoch+1}/{pretrain_epochs}', leave=False):
+            inputs, targets = inputs.to(device), targets.to(device)
+            optimizer.zero_grad()
+            outputs = model(inputs)
+            loss = criterion(outputs, targets)
+            loss.backward()
+            optimizer.step()
+
+            epoch_loss += loss.item()
+            num_batches += 1
+
+        scheduler.step()
+        print(f'  Epoch {epoch+1}/{pretrain_epochs}: Avg Loss = {epoch_loss/num_batches:.4f}')
+
+    print('Computing CRAIG gradient embeddings on trained model...')
     grad_emb = get_craig_grad_embeddings(model, full_dataset, device, num_workers, cache_dir)
 
     print(f'Running CRAIG gradient matching (lazy={use_lazy_greedy})...')
