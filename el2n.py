@@ -13,7 +13,7 @@ def compute_el2n_scores(model_fn, dataset, epochs=5, device='cuda', num_workers=
     """
     model = model_fn(device=device)
     optimizer = optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=1e-5)
     criterion = nn.CrossEntropyLoss(reduction='none')
 
     # Store scores on GPU as tensors (one per epoch)

@@ -71,16 +71,16 @@ def iterative_magnitude_prune_and_retrain(model_fn, train_dataset, test_loader,
         apply_mask(model, mask)
 
         opt = optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
-        scheduler = optim.lr_scheduler.StepLR(opt, step_size=epochs_per_cycle//2, gamma=0.1)
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs_per_cycle, eta_min=1e-5)
 
         # Retrain with mask enforcement
-        # Create DataLoader once outside epoch loop for efficiency with deterministic shuffling
-        g_retrain = torch.Generator()
-        g_retrain.manual_seed(seed + it + 1000)  # Different seed per iteration but deterministic
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
-                                  num_workers=num_workers, generator=g_retrain, worker_init_fn=init_worker)
-
         for e in range(epochs_per_cycle):
+            # Create fresh DataLoader for each epoch with unique seed
+            g_retrain = torch.Generator()
+            g_retrain.manual_seed(seed + it * 1000 + e)  # Unique seed per epoch
+            train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
+                                      num_workers=num_workers, generator=g_retrain, worker_init_fn=init_worker)
+
             model.train()
 
             for inputs, targets in train_loader:
