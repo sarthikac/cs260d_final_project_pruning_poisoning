@@ -72,58 +72,7 @@ def craig_lazy_greedy_heap(grad_embeddings, k, num_classes=10):
 
     return selected
 
-
-def craig_greedy_gradient_matching(grad_embeddings, k, num_classes=10):
-    """
-    CRAIG greedy selection via gradient matching as in official implementation.
-    Selects points whose gradients best approximate the full dataset's gradient sum.
-
-    Args:
-        grad_embeddings: [n, d] array of gradient embeddings
-        k: number of points to select
-        num_classes: number of classes (kept for compatibility)
-
-    Returns:
-        selected: list of k selected indices
-    """
-    n = grad_embeddings.shape[0]
-    selected = []
-    remaining = set(range(n))
-
-    # Normalize gradients
-    grad_norms = np.linalg.norm(grad_embeddings, axis=1, keepdims=True)
-    normalized_grads = grad_embeddings / (grad_norms + 1e-8)
-
-    # Compute full gradient sum (target for approximation)
-    full_gradient_sum = normalized_grads.sum(axis=0)
-
-    # Track current sum of selected gradients
-    current_sum = np.zeros_like(full_gradient_sum)
-
-    for _ in range(k):
-        best_gain = -np.inf
-        best_idx = -1
-
-        for idx in remaining:
-            # Compute marginal gain: how much better does adding idx make our approximation?
-            candidate_grad = normalized_grads[idx]
-            new_sum = current_sum + candidate_grad
-
-            # Gain = improvement in alignment with full gradient
-            gain = np.dot(new_sum, full_gradient_sum) - np.dot(current_sum, full_gradient_sum)
-
-            if gain > best_gain:
-                best_gain = gain
-                best_idx = idx
-
-        if best_idx != -1:
-            selected.append(best_idx)
-            remaining.remove(best_idx)
-            current_sum += normalized_grads[best_idx]
-
-    return selected
-
-def get_craig_grad_embeddings(model, dataset, device='cuda', num_workers=0, cache_dir=None):
+def get_craig_grad_embeddings(model, dataset, device='cuda', num_workers=0):
     """
     Compute gradient embeddings for CRAIG as in official implementation.
     Optionally caches results to disk for faster re-runs.
@@ -133,19 +82,10 @@ def get_craig_grad_embeddings(model, dataset, device='cuda', num_workers=0, cach
         dataset: PyTorch dataset
         device: device to use for computation
         num_workers: number of dataloader workers
-        cache_dir: optional directory to cache gradient embeddings
 
     Returns:
         grad_embeddings: [n, d] numpy array of gradient embeddings
     """
-    # Check cache if provided
-    if cache_dir is not None:
-        os.makedirs(cache_dir, exist_ok=True)
-
-        cache_file = os.path.join(cache_dir, f"grad_embeddings_{len(dataset)}.npy")
-        if os.path.exists(cache_file):
-            print(f"Loading cached gradient embeddings from {cache_file}")
-            return np.load(cache_file)
 
     model.eval()
     embeddings = []
@@ -183,16 +123,10 @@ def get_craig_grad_embeddings(model, dataset, device='cuda', num_workers=0, cach
     elapsed = time.time() - start_time
     print(f"Gradient embedding extraction took {elapsed:.2f} seconds")
 
-    # Save to cache if provided
-    if cache_dir is not None:
-        np.save(cache_file, result)
-        print(f"Saved gradient embeddings to {cache_file}")
-
     return result
 
 def select_subset_craig(model_fn, full_dataset, subset_size, device='cuda', num_workers=0,
-                        use_lazy_greedy=True, cache_dir=None, pretrain_epochs=20, warmup_epochs=10, seed=0,
-                        per_class=True, num_classes=10):
+                        pretrain_epochs=20, warmup_epochs=10, batch_size=128, seed=0):
     """
     CRAIG selection using gradient matching (official implementation).
 
@@ -204,14 +138,9 @@ def select_subset_craig(model_fn, full_dataset, subset_size, device='cuda', num_
         subset_size: number of samples to select (k)
         device: device to use for computation ('cuda' or 'cpu')
         num_workers: number of dataloader workers
-        use_lazy_greedy: if True, use heap-based lazy greedy (faster, O(k*m*log n));
-                        if False, use standard greedy (simpler, O(k*n))
-        cache_dir: optional directory to cache gradient embeddings for faster re-runs
         pretrain_epochs: number of epochs to train before computing gradients (default: 5)
         warmup_epochs: number of warmup epochs for learning rate (default: 2)
         seed: random seed for reproducibility (default: 0)
-        per_class: if True, perform selection separately per class for better balance (default: True)
-        num_classes: number of classes in dataset (default: 10 for CIFAR-10)
 
     Returns:
         selected: list of selected indices
@@ -237,7 +166,7 @@ def select_subset_craig(model_fn, full_dataset, subset_size, device='cuda', num_
     # Create training loader with deterministic shuffling
     g = torch.Generator()
     g.manual_seed(seed)
-    train_loader = DataLoader(full_dataset, batch_size=128, shuffle=True,
+    train_loader = DataLoader(full_dataset, batch_size=batch_size, shuffle=True,
                              num_workers=num_workers, generator=g, worker_init_fn=init_worker)
 
     for epoch in range(pretrain_epochs):
@@ -260,58 +189,39 @@ def select_subset_craig(model_fn, full_dataset, subset_size, device='cuda', num_
         print(f'  Epoch {epoch+1}/{pretrain_epochs}: Avg Loss = {epoch_loss/num_batches:.4f}')
 
     print('Computing CRAIG gradient embeddings on trained model...')
-    grad_emb = get_craig_grad_embeddings(model, full_dataset, device, num_workers, cache_dir)
+    grad_emb = get_craig_grad_embeddings(model, full_dataset, device, num_workers)
 
-    print(f'Running CRAIG gradient matching (lazy={use_lazy_greedy}, per_class={per_class})...')
     start_time = time.time()
 
-    if per_class:
-        # Per-class selection: select proportionally from each class
-        print('Performing per-class selection for better class balance...')
+    # Per-class selection: select proportionally from each class
+    print('Performing per-class selection for better class balance...')
 
-        # Get labels for all samples
-        labels = np.array([full_dataset[i][1] for i in range(len(full_dataset))])
+    # Get labels for all samples
+    labels = np.array([full_dataset[i][1] for i in range(len(full_dataset))])
+    num_classes = len(np.unique(labels))
 
-        # Compute per-class subset sizes (proportional to class frequency)
-        selected = []
-        for class_idx in range(num_classes):
-            class_mask = (labels == class_idx)
-            class_indices = np.where(class_mask)[0]
-            class_count = len(class_indices)
+    # Compute per-class subset sizes (proportional to class frequency)
+    selected = []
+    for class_idx in range(num_classes):
+        class_mask = (labels == class_idx)
+        class_indices = np.where(class_mask)[0]
+        class_count = len(class_indices)
 
-            if class_count == 0:
-                continue
+        # Proportional allocation
+        class_subset_size = int(subset_size * (class_count / len(full_dataset)))
 
-            # Proportional allocation
-            class_subset_size = int(subset_size * (class_count / len(full_dataset)))
+        # Extract gradient embeddings for this class
+        class_grad_emb = grad_emb[class_indices]
 
-            # Ensure at least 1 sample per class if subset_size allows
-            if class_subset_size == 0 and subset_size >= num_classes:
-                class_subset_size = 1
+        class_selected_local = craig_lazy_greedy_heap(class_grad_emb, class_subset_size)
 
-            if class_subset_size > 0:
-                # Extract gradient embeddings for this class
-                class_grad_emb = grad_emb[class_indices]
+        # Map local indices back to global indices
+        class_selected_global = [class_indices[idx] for idx in class_selected_local]
+        selected.extend(class_selected_global)
 
-                # Run CRAIG selection on class subset
-                if use_lazy_greedy:
-                    class_selected_local = craig_lazy_greedy_heap(class_grad_emb, class_subset_size)
-                else:
-                    class_selected_local = craig_greedy_gradient_matching(class_grad_emb, class_subset_size)
+        print(f'  Class {class_idx}: selected {len(class_selected_global)}/{class_count} samples')
 
-                # Map local indices back to global indices
-                class_selected_global = [class_indices[idx] for idx in class_selected_local]
-                selected.extend(class_selected_global)
-
-                print(f'  Class {class_idx}: selected {len(class_selected_global)}/{class_count} samples')
-
-        selected = np.array(selected).tolist()
-    else:
-        # Global selection: select from entire dataset
-        if use_lazy_greedy:
-            selected = craig_lazy_greedy_heap(grad_emb, subset_size)
-        else:
-            selected = craig_greedy_gradient_matching(grad_emb, subset_size)
+    selected = np.array(selected).tolist()
 
     elapsed = time.time() - start_time
     print(f'CRAIG gradient matching took {elapsed:.2f} seconds')

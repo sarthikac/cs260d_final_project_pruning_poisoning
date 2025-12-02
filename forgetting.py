@@ -6,7 +6,7 @@ from tqdm import tqdm
 import numpy as np
 from utils import init_worker
 
-def compute_forgetting_scores(model_fn, dataset, epochs=5, device='cuda', num_workers=0, seed=0):
+def compute_forgetting_scores(model_fn, dataset, epochs=5, batch_size=128, device='cuda', num_workers=0, seed=0):
     """
     Compute forgetting scores as in Toneva et al. 2018.
     """
@@ -29,7 +29,7 @@ def compute_forgetting_scores(model_fn, dataset, epochs=5, device='cuda', num_wo
         g = torch.Generator()
         g.manual_seed(seed + epoch)
 
-        train_loader = DataLoader(dataset, batch_size=128, shuffle=True, num_workers=num_workers,
+        train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers,
                                   generator=g, worker_init_fn=init_worker)
         
         # Training phase

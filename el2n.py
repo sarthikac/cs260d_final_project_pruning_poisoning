@@ -7,7 +7,7 @@ from tqdm import tqdm
 import numpy as np
 from utils import init_worker
 
-def compute_el2n_scores(model_fn, dataset, epochs=5, device='cuda', num_workers=0, seed=0):
+def compute_el2n_scores(model_fn, dataset, epochs=5, batch_size=128, device='cuda', num_workers=0, seed=0):
     """
     Compute EL2N scores as in Data Diet paper: average error L2 norm in early training
     """
@@ -23,7 +23,7 @@ def compute_el2n_scores(model_fn, dataset, epochs=5, device='cuda', num_workers=
     g = torch.Generator()
     g.manual_seed(seed)
 
-    loader = DataLoader(dataset, batch_size=128, shuffle=True, num_workers=num_workers,
+    loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers,
                        generator=g, worker_init_fn=init_worker)
 
     for epoch in range(epochs):
