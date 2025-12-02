@@ -191,7 +191,8 @@ def get_craig_grad_embeddings(model, dataset, device='cuda', num_workers=0, cach
     return result
 
 def select_subset_craig(model_fn, full_dataset, subset_size, device='cuda', num_workers=0,
-                        use_lazy_greedy=True, cache_dir=None, pretrain_epochs=5, warmup_epochs=2, seed=0):
+                        use_lazy_greedy=True, cache_dir=None, pretrain_epochs=20, warmup_epochs=10, seed=0,
+                        per_class=True, num_classes=10):
     """
     CRAIG selection using gradient matching (official implementation).
 
@@ -209,6 +210,8 @@ def select_subset_craig(model_fn, full_dataset, subset_size, device='cuda', num_
         pretrain_epochs: number of epochs to train before computing gradients (default: 5)
         warmup_epochs: number of warmup epochs for learning rate (default: 2)
         seed: random seed for reproducibility (default: 0)
+        per_class: if True, perform selection separately per class for better balance (default: True)
+        num_classes: number of classes in dataset (default: 10 for CIFAR-10)
 
     Returns:
         selected: list of selected indices
@@ -259,15 +262,58 @@ def select_subset_craig(model_fn, full_dataset, subset_size, device='cuda', num_
     print('Computing CRAIG gradient embeddings on trained model...')
     grad_emb = get_craig_grad_embeddings(model, full_dataset, device, num_workers, cache_dir)
 
-    print(f'Running CRAIG gradient matching (lazy={use_lazy_greedy})...')
+    print(f'Running CRAIG gradient matching (lazy={use_lazy_greedy}, per_class={per_class})...')
     start_time = time.time()
 
-    if use_lazy_greedy:
-        selected = craig_lazy_greedy_heap(grad_emb, subset_size)
+    if per_class:
+        # Per-class selection: select proportionally from each class
+        print('Performing per-class selection for better class balance...')
+
+        # Get labels for all samples
+        labels = np.array([full_dataset[i][1] for i in range(len(full_dataset))])
+
+        # Compute per-class subset sizes (proportional to class frequency)
+        selected = []
+        for class_idx in range(num_classes):
+            class_mask = (labels == class_idx)
+            class_indices = np.where(class_mask)[0]
+            class_count = len(class_indices)
+
+            if class_count == 0:
+                continue
+
+            # Proportional allocation
+            class_subset_size = int(subset_size * (class_count / len(full_dataset)))
+
+            # Ensure at least 1 sample per class if subset_size allows
+            if class_subset_size == 0 and subset_size >= num_classes:
+                class_subset_size = 1
+
+            if class_subset_size > 0:
+                # Extract gradient embeddings for this class
+                class_grad_emb = grad_emb[class_indices]
+
+                # Run CRAIG selection on class subset
+                if use_lazy_greedy:
+                    class_selected_local = craig_lazy_greedy_heap(class_grad_emb, class_subset_size)
+                else:
+                    class_selected_local = craig_greedy_gradient_matching(class_grad_emb, class_subset_size)
+
+                # Map local indices back to global indices
+                class_selected_global = [class_indices[idx] for idx in class_selected_local]
+                selected.extend(class_selected_global)
+
+                print(f'  Class {class_idx}: selected {len(class_selected_global)}/{class_count} samples')
+
+        selected = np.array(selected).tolist()
     else:
-        selected = craig_greedy_gradient_matching(grad_emb, subset_size)
+        # Global selection: select from entire dataset
+        if use_lazy_greedy:
+            selected = craig_lazy_greedy_heap(grad_emb, subset_size)
+        else:
+            selected = craig_greedy_gradient_matching(grad_emb, subset_size)
 
     elapsed = time.time() - start_time
     print(f'CRAIG gradient matching took {elapsed:.2f} seconds')
-    print(f'CRAIG selected {len(selected)} items.')
+    print(f'CRAIG selected {len(selected)} items total.')
     return selected
