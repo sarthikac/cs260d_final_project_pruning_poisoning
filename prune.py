@@ -4,7 +4,7 @@ from torch.utils.data import DataLoader
 import torch
 import copy
 from train_utils import train_one_epoch
-from utils import init_worker
+from utils import init_worker, set_all_random_seeds, RANDOM_SEED
 
 
 def get_prunable_layers(model):
@@ -43,15 +43,16 @@ def iterative_magnitude_prune_and_retrain(model_fn, train_dataset, test_loader,
                                         rewind_epoch=1, epochs_per_cycle=3,
                                         batch_size=256,
                                         num_workers=0,
-                                        device='cuda', seed=0):
-    model = model_fn(device=device)
+                                        device='cuda'):
+    set_all_random_seeds()
+    model = model_fn(device=device, seed=RANDOM_SEED)
     opt = optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
     crit = nn.CrossEntropyLoss()
 
     # 1. Train to rewind point
     print(f"Training to rewind epoch {rewind_epoch}...")
     g = torch.Generator()
-    g.manual_seed(seed)
+    g.manual_seed(RANDOM_SEED)
     for e in range(rewind_epoch):
         rewind_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
                                    num_workers=num_workers, generator=g, worker_init_fn=init_worker)
@@ -77,7 +78,7 @@ def iterative_magnitude_prune_and_retrain(model_fn, train_dataset, test_loader,
         for e in range(epochs_per_cycle):
             # Create fresh DataLoader for each epoch with unique seed
             g_retrain = torch.Generator()
-            g_retrain.manual_seed(seed + it * 1000 + e)  # Unique seed per epoch
+            g_retrain.manual_seed(RANDOM_SEED + it * 1000 + e)  # Unique seed per epoch
             train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
                                       num_workers=num_workers, generator=g_retrain, worker_init_fn=init_worker)
 

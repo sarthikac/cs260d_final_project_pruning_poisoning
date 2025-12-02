@@ -5,13 +5,14 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import numpy as np
-from utils import init_worker
+from utils import init_worker, set_all_random_seeds, RANDOM_SEED
 
-def compute_el2n_scores(model_fn, dataset, epochs=5, batch_size=128, device='cuda', num_workers=0, seed=0):
+def compute_el2n_scores(model_fn, dataset, epochs=5, batch_size=128, device='cuda', num_workers=0):
     """
     Compute EL2N scores as in Data Diet paper: average error L2 norm in early training
     """
-    model = model_fn(device=device)
+    set_all_random_seeds()
+    model = model_fn(device=device, seed=RANDOM_SEED)
     optimizer = optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=1e-5)
     criterion = nn.CrossEntropyLoss(reduction='none')
@@ -21,7 +22,7 @@ def compute_el2n_scores(model_fn, dataset, epochs=5, batch_size=128, device='cud
 
     # Create generator for deterministic shuffling
     g = torch.Generator()
-    g.manual_seed(seed)
+    g.manual_seed(RANDOM_SEED)
 
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers,
                        generator=g, worker_init_fn=init_worker)

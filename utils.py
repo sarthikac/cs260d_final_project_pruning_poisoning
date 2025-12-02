@@ -2,6 +2,20 @@ import torch
 from torch.utils.data import Subset
 import random
 import numpy as np
+import os
+
+RANDOM_SEED = 0
+
+def set_all_random_seeds(seed=RANDOM_SEED):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+    torch.use_deterministic_algorithms(True)
+    os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
 
 def init_worker(worker_id):
     base_seed = torch.initial_seed() 

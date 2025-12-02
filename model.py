@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torchvision.models import resnet18
+from utils import set_all_random_seeds, RANDOM_SEED
 
 class ResNet18Wrapper(nn.Module):
     def __init__(self, num_classes=10):
@@ -32,5 +33,6 @@ class ResNet18Wrapper(nn.Module):
         f = torch.flatten(f, 1)
         return self.classifier(f)
 
-def get_model(num_classes=10, device='cuda'):
+def get_model(num_classes=10, device='cuda', seed=RANDOM_SEED):
+    set_all_random_seeds(seed)
     return ResNet18Wrapper(num_classes=num_classes).to(device)

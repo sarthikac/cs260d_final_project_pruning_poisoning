@@ -7,7 +7,7 @@ import heapq
 import os
 import time
 from tqdm import tqdm
-from utils import init_worker
+from utils import init_worker, set_all_random_seeds, RANDOM_SEED
 from GradualWarmupScheduler import GradualWarmupScheduler
 
 def craig_lazy_greedy_heap(grad_embeddings, k, num_classes=10):
@@ -126,7 +126,7 @@ def get_craig_grad_embeddings(model, dataset, device='cuda', num_workers=0):
     return result
 
 def select_subset_craig(model_fn, full_dataset, subset_size, device='cuda', num_workers=0,
-                        pretrain_epochs=20, warmup_epochs=10, batch_size=128, seed=0):
+                        pretrain_epochs=20, warmup_epochs=10, batch_size=128):
     """
     CRAIG selection using gradient matching (official implementation).
 
@@ -145,7 +145,8 @@ def select_subset_craig(model_fn, full_dataset, subset_size, device='cuda', num_
     Returns:
         selected: list of selected indices
     """
-    model = model_fn(device=device)
+    set_all_random_seeds(RANDOM_SEED)
+    model = model_fn(device=device, seed=RANDOM_SEED)
 
     # Train model for a few epochs before computing gradients (prevents random initialization bias)
     print(f'Pre-training CRAIG model for {pretrain_epochs} epochs (warmup: {warmup_epochs})...')
@@ -165,7 +166,7 @@ def select_subset_craig(model_fn, full_dataset, subset_size, device='cuda', num_
 
     # Create training loader with deterministic shuffling
     g = torch.Generator()
-    g.manual_seed(seed)
+    g.manual_seed(RANDOM_SEED)
     train_loader = DataLoader(full_dataset, batch_size=batch_size, shuffle=True,
                              num_workers=num_workers, generator=g, worker_init_fn=init_worker)
 
