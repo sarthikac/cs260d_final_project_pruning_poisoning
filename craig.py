@@ -126,7 +126,7 @@ def get_craig_grad_embeddings(model, dataset, device='cuda', num_workers=0):
     return result
 
 def select_subset_craig(model_fn, full_dataset, subset_size, device='cuda', num_workers=0,
-                        pretrain_epochs=20, warmup_epochs=10, batch_size=128):
+                        pretrain_epochs=20, warmup_epochs=10, batch_size=128, seed=RANDOM_SEED):
     """
     CRAIG selection using gradient matching (official implementation).
 
@@ -140,13 +140,13 @@ def select_subset_craig(model_fn, full_dataset, subset_size, device='cuda', num_
         num_workers: number of dataloader workers
         pretrain_epochs: number of epochs to train before computing gradients (default: 5)
         warmup_epochs: number of warmup epochs for learning rate (default: 2)
-        seed: random seed for reproducibility (default: 0)
+        seed: random seed for reproducibility (default: RANDOM_SEED)
 
     Returns:
         selected: list of selected indices
     """
-    set_all_random_seeds(RANDOM_SEED)
-    model = model_fn(device=device, seed=RANDOM_SEED)
+    set_all_random_seeds(seed)
+    model = model_fn(device=device, seed=seed)
 
     # Train model for a few epochs before computing gradients (prevents random initialization bias)
     print(f'Pre-training CRAIG model for {pretrain_epochs} epochs (warmup: {warmup_epochs})...')
@@ -166,7 +166,7 @@ def select_subset_craig(model_fn, full_dataset, subset_size, device='cuda', num_
 
     # Create training loader with deterministic shuffling
     g = torch.Generator()
-    g.manual_seed(RANDOM_SEED)
+    g.manual_seed(seed)
     train_loader = DataLoader(full_dataset, batch_size=batch_size, shuffle=True,
                              num_workers=num_workers, generator=g, worker_init_fn=init_worker)
 

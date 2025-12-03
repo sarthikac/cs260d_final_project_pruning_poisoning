@@ -3,15 +3,15 @@ import random
 from PIL import Image, ImageDraw
 from torchvision.datasets import CIFAR10
 import torchvision.transforms as transforms
-from utils import set_all_random_seeds
+from utils import RANDOM_SEED
 
 class BackdoorDataset(CIFAR10):
-    def __init__(self, *args, poison_frac=0.01, patch_size=6, target_class=0, **kwargs):
+    def __init__(self, *args, poison_frac=0.01, patch_size=6, target_class=0, seed=RANDOM_SEED, **kwargs):
         super().__init__(*args, **kwargs)
         self.poison_frac = poison_frac
         self.patch_size = patch_size
         self.target_class = target_class
-        set_all_random_seeds()
+        random.seed(seed)
         all_idx = list(range(len(self)))
         n_poison = max(1, int(len(all_idx) * poison_frac))
         self.poisoned_idx = set(random.sample(all_idx, n_poison))

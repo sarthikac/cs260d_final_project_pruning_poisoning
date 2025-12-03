@@ -37,5 +37,5 @@ def data_loaders(data_root='./data', batch_size: int=256, num_workers: int=0, se
 
 def new_backdoor_dataset(data_root = './data', poison_frac=0.1, patch_size=6, seed=0):
     ds_poisoned = BackdoorDataset(root=data_root, train=True, download=False, transform=transform_train,
-                                    poison_frac=poison_frac, patch_size=patch_size, target_class=0)
+                                    poison_frac=poison_frac, patch_size=patch_size, target_class=0, seed=seed)
     return ds_poisoned
