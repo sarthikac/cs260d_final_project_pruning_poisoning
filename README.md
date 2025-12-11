@@ -111,4 +111,4 @@ We evaluate five dataset variants at 50% downsampling for each:
 | **Forgetting** | 0.8952±0.0408            | 0.8779±0.0026          | 0.7999±0.0219          | 0.9995±0.0004         | 0.9939±0.0027         |
 | **CRAIG**      | 0.1414±0.0609            | 0.8664±0.0013          | 0.7983±0.0235          | 0.8377±0.1288         | 0.6045±0.2815         |
 
-#### CRAIG is the only method providing meaningful backdoor mitigation.
+#### CRAIG is the only method that seems to provide meaningful backdoor mitigation, and works even better when combined with pruning at the cost of a slight decrease in accuracy.
