@@ -95,4 +95,18 @@ We evaluate five dataset variants at 50% downsampling for each:
 ### Clean Accuracy
 - CRAIG maintains ~0.80 clean accuracy even after pruning.
 
+## Results Summary
+<img width="554" height="264" alt="Screenshot 2025-12-11 at 1 43 29 PM" src="https://github.com/user-attachments/assets/c580cd56-723a-4c6f-b95d-da57bd2dfcb1" />
+
+<img width="596" height="257" alt="Screenshot 2025-12-11 at 1 44 02 PM" src="https://github.com/user-attachments/assets/f1665d47-da36-4fc5-b7ff-cd8420f6be8a" />
+
+
+| Method     | Poison Ret. Rate       | Dense Acc.            | Pruned Acc.           | Dense ASR            | Pruned ASR           |
+|------------|-------------------------|------------------------|------------------------|-----------------------|-----------------------|
+| **Full**       | 1.0000±0.0000            | 0.9421±0.0021          | 0.8981±0.0084          | 0.9997±0.0002         | 0.9950±0.0027         |
+| **Random**     | 0.9952±0.0016            | 0.9118±0.0011          | 0.8393±0.0059          | 0.9997±0.0002         | 0.9957±0.0026         |
+| **EL2N**       | 0.9898±0.0055            | 0.8196±0.0071          | 0.7500±0.0100          | 0.9998±0.0002         | 0.9978±0.0022         |
+| **Forgetting** | 0.8952±0.0408            | 0.8779±0.0026          | 0.7999±0.0219          | 0.9995±0.0004         | 0.9939±0.0027         |
+| **CRAIG**      | 0.1414±0.0609            | 0.8664±0.0013          | 0.7983±0.0235          | 0.8377±0.1288         | 0.6045±0.2815         |
+
 #### CRAIG is the only method providing meaningful backdoor mitigation.
