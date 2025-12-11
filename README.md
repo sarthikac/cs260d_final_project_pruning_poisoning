@@ -1,4 +1,5 @@
 # Mitigating Backdoor Poisoning Using Data Summarization and Model Pruning
+Sarthika Chimmula, Demetri Nicolaou, Adi Pillai
 
 This repository contains the code and experiments for our CS260D final project: “Mitigating Backdoor Poisoning using Data Summarization and Model Pruning.”
 We study whether lightweight, single-shot data summarization (coreset) methods combined with model pruning can mitigate backdoor poisoning attacks without requiring complex multi-stage poison detection.
@@ -13,6 +14,36 @@ Our key finding:
 CRAIG is the only method that significantly filters poisoned samples and meaningfully reduces the attack success rate (ASR), especially when combined with pruning.
 
 ## Repository Structure
+
+cd260d_final_project_pruning_poisoning/
+│
+├── backdoor_aggregated_loss_history.csv      # Aggregated loss curves across replicates for backdoor experiments
+├── backdoor_aggregated_results.csv           # Aggregated accuracy & ASR results across replicates
+├── backdoor_all_replicates.csv               # Raw results for all poisoning replicates
+├── backdoor_loss_history_prototype*.csv      # Prototype runs: loss curves for early/backbone experiments
+├── backdoor_results_prototype*.csv           # Prototype runs: accuracy, ASR, poison retention
+│
+├── COM SCI 260D Final Report.pdf             # Final written report summarizing methods, results, analysis
+├── README.md                                 # Project description, instructions, and findings
+├── .gitignore                                # Files/folders excluded from version control
+│
+├── craig.py                                   # CRAIG subset-selection implementation
+├── el2n.py                                    # EL2N scoring to measure example difficulty
+├── forgetting.py                              # Forgetting event implementation and scoring
+├── prune.py                                   # Pruning logic (IMP-style pruning, mask updates)
+├── poison.py                                  # Backdoor poisoning (trigger insertion, poisoned data generation)
+├── dataset.py                                 # CIFAR-10 dataset loading, preprocessing, and poison integration
+├── model.py                                   # Model definitions (ResNet architecture, deterministic settings)
+├── train_utils.py                             # Training utilities (loops, LR scheduling, checkpoints)
+├── utils.py                                   # General utilities: seed control, logging, helper functions
+├── GradualWarmupScheduler.py                  # Learning rate warmup scheduler implementation
+│
+├── results.py                                 # Aggregates outputs and writes CSV results tables
+├── run.py                                     # Main experiment driver (poison → prune → train → evaluate)
+│
+├── final_poison_prune_selection_notebook.ipynb   # Jupyter notebook for experiment demos and analysis
+│
+
 
 ## Project Goals
 We evaluate whether:
@@ -63,4 +94,5 @@ We evaluate five dataset variants at 50% downsampling for each:
 
 ### Clean Accuracy
 - CRAIG maintains ~0.80 clean accuracy even after pruning.
-➡ CRAIG is the only method providing meaningful backdoor mitigation.
+
+#### CRAIG is the only method providing meaningful backdoor mitigation.
