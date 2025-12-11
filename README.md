@@ -14,7 +14,7 @@ Our key finding:
 CRAIG is the only method that significantly filters poisoned samples and meaningfully reduces the attack success rate (ASR), especially when combined with pruning.
 
 ## Repository Structure
-
+```
 cd260d_final_project_pruning_poisoning/
 │
 ├── backdoor_aggregated_loss_history.csv      # Aggregated loss curves across replicates for backdoor experiments
@@ -43,7 +43,7 @@ cd260d_final_project_pruning_poisoning/
 │
 ├── final_poison_prune_selection_notebook.ipynb   # Jupyter notebook for experiment demos and analysis
 │
-
+```
 
 ## Project Goals
 We evaluate whether:
